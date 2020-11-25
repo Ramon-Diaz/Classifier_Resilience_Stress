@@ -13,8 +13,6 @@ import time
 
 from tqdm.auto import tqdm
 from sys import stdout
-import warnings
-warnings.filterwarnings("ignore")
 
 class PreprocessRSI():
 
@@ -57,9 +55,9 @@ class PreprocessRSI():
             phases = range(1, int(self.df_pc_[subject]['Time'].iloc[-1])//120+1)
             i = 0.0
             for phase in phases:
-                self.df_pc_[subject]['Phase'][(self.df_pc_[subject]['Time']>=i) & (self.df_pc_[subject]['Time']<(i+120))] = 'phase'+str(phase)
+                self.df_pc_[subject].loc[(self.df_pc_[subject]['Time']>=i) & (self.df_pc_[subject]['Time']<(i+120)),'Phase'] = 'phase'+str(phase)
                 i+=120
-            self.df_pc_[subject]['Phase'].iloc[-1] = 'phase'+str(phases[-1])
+            self.df_pc_[subject].loc[-1:, 'Phase'] = 'phase'+str(phases[-1])
         end = time.time()
         print('Finished adding phase column in '+str(round(end-st,2))+' seconds.')
 
@@ -165,26 +163,25 @@ class PreprocessRSI():
         
         return self
 # %%
-st_all = time.time()
-model = PreprocessRSI('ProComp')
-print('Applying Median Filter...')
-st = time.time()
-with tqdm(total=len(model.df_pc_), file=stdout) as pbar:
-    for i in range(len(model.df_pc_)):
-        pbar.set_description('  Subject')
-        model.apply_filter(i,501)
-        pbar.update(1)
-end = time.time()
-print('Time: '+str(round(end-st,2))+' seconds.')
-model.add_time_dependencies()
-model.fit_scaler(StandardScaler())
-model.transform_scaler()
-end_all = time.time()
-print('Done.\nTime: '+str(round(end_all-st_all,2))+' seconds.')
-print('Exporting the data...')
-with open('subjects.data','wb') as data:
-    pickle.dump(model.df_pc_, data)
-print('DONE.')
-# %%
-model.df_pc_[2]
+if __name__ == "__main__":
+    st_all = time.time()
+    model = PreprocessRSI('ProComp')
+    print('Applying Median Filter...')
+    st = time.time()
+    with tqdm(total=len(model.df_pc_), file=stdout) as pbar:
+        for i in range(len(model.df_pc_)):
+            pbar.set_description('  Subject')
+            model.apply_filter(i,501)
+            pbar.update(1)
+    end = time.time()
+    print('Time: '+str(round(end-st,2))+' seconds.')
+    model.add_time_dependencies()
+    model.fit_scaler(StandardScaler())
+    model.transform_scaler()
+    end_all = time.time()
+    print('Done.\nTime: '+str(round(end_all-st_all,2))+' seconds.')
+    print('Exporting the data...')
+    with open('subjects.data','wb') as data:
+        pickle.dump(model.df_pc_, data)
+    print('DONE.')
 # %%

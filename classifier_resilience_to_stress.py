@@ -6,8 +6,6 @@ import time
 import pickle
 from tqdm.auto import tqdm
 from sys import stdout
-import warnings
-warnings.filterwarnings("ignore")
 
 from sklearn.preprocessing import label_binarize
 from sklearn.model_selection import StratifiedKFold
@@ -51,7 +49,7 @@ class RSIClassifier():
         return None
 
     def cv_auc(self, data, classifier, cv):
-        #print('    Training model: '+str(classifier))
+        print('    Training model: '+str(classifier))
         # Initialize variables
         auc_scores = []
         # Create a copy to avoid changes to original dataset
@@ -64,54 +62,50 @@ class RSIClassifier():
         y = label_binarize(y_, classes=classes)
         # Begin the cross-validation method
         fold = 1
-        #with tqdm(total=cv.get_n_splits(), leave=False, position=1) as pbar:
-        for train_index, test_index in cv.split(X, y):
-            #pbar.set_description('      Fold')
-            # Split train-test
-            X_train, X_test = X[train_index], X[test_index]
-            y_train, y_test = y[train_index], y[test_index]
-            # Fit model
-            y_pred = classifier.fit(X_train,y_train).predict(X_test)
-            # Compute the AUC score
-            score = roc_auc_score(y_test, y_pred)
-            #score = 1-score if score<0.5 else score
-            auc_scores.append(score)
-            fold+=1
-            #pbar.update(1)
+        with tqdm(total=cv.get_n_splits(), file=stdout) as pbar:
+            for train_index, test_index in cv.split(X, y):
+                pbar.set_description('      Fold')
+                # Split train-test
+                X_train, X_test = X[train_index], X[test_index]
+                y_train, y_test = y[train_index], y[test_index]
+                # Fit model
+                y_pred = classifier.fit(X_train,y_train.ravel()).predict(X_test)
+                # Compute the AUC score
+                score = roc_auc_score(y_test, y_pred)
+                #score = 1-score if score<0.5 else score
+                auc_scores.append(score)
+                fold+=1
+                pbar.update(1)
 
         return auc_scores
 
     def get_models_results(self, subjects, models, cv):
-        with tqdm(total=[True if 'phase5' in self.df_pc_[x].Phase.unique() else False for x in subjects].count(True), file=stdout) as pbart:
-            for subject in subjects:
-                if 'phase5' in self.df_pc_[subject].Phase.unique():
-                    pbart.set_description('Subject')
-                    #print('Subject: '+str(subject))
-                    temp = self.df_pc_[subject].copy()
-                    f_results_ = {}
-                    test_df = (
-                            ('phase1_vs_phase3',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase3')]),
-                            ('phase1_vs_phase5',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase5')]),
-                            ('phase3_vs_phase5',temp[(temp['Phase'] == 'phase3') | (temp['Phase'] == 'phase5')]),
-                            ('phase1_vs_phase2',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase2')]),
-                            ('phase1_vs_phase4',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase4')]),
-                            ('phase3_vs_phase2',temp[(temp['Phase'] == 'phase3') | (temp['Phase'] == 'phase2')]),
-                            ('phase3_vs_phase4',temp[(temp['Phase'] == 'phase3') | (temp['Phase'] == 'phase4')]),
-                            ('phase5_vs_phase2',temp[(temp['Phase'] == 'phase5') | (temp['Phase'] == 'phase2')]),
-                            ('phase5_vs_phase4',temp[(temp['Phase'] == 'phase5') | (temp['Phase'] == 'phase4')]) 
-                        )
-                    st = time.time()
-                    counter = 1
-                    for dataset in test_df:
-                        #print('\n  Training data: '+dataset[0]+' ({}/{})\n'.format(counter,len(test_df)))
-                        counter+=1
-                        f_results_[dataset[0]] = {model_name: self.cv_auc(dataset[1], model, cv)  for model_name, model in models}
-                    end = time.time()
-                    #print('\n  Done training subject '+str(subject)+' in '+str(round((end-st)/60,2))+' minutes.\n')
-                    self.results_[subject] = f_results_
-                    pbart.update(1)
-                else:
-                    pass
+        # Check for phase 5 subjects only
+        temp_df = [self.df_pc_[iter].copy() for iter in subjects if 'phase5' in self.df_pc_[iter].Phase.unique()]
+        for df in temp_df:
+            print('Case: '+str(df['Subject'].iloc[0][4:]))
+            temp = df.copy()
+            f_results_ = {}
+            test_df = (
+                    ('phase1_vs_phase3',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase3')]),
+                    ('phase1_vs_phase5',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase5')]),
+                    ('phase3_vs_phase5',temp[(temp['Phase'] == 'phase3') | (temp['Phase'] == 'phase5')]),
+                    ('phase1_vs_phase2',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase2')]),
+                    ('phase1_vs_phase4',temp[(temp['Phase'] == 'phase1') | (temp['Phase'] == 'phase4')]),
+                    ('phase3_vs_phase2',temp[(temp['Phase'] == 'phase3') | (temp['Phase'] == 'phase2')]),
+                    ('phase3_vs_phase4',temp[(temp['Phase'] == 'phase3') | (temp['Phase'] == 'phase4')]),
+                    ('phase5_vs_phase2',temp[(temp['Phase'] == 'phase5') | (temp['Phase'] == 'phase2')]),
+                    ('phase5_vs_phase4',temp[(temp['Phase'] == 'phase5') | (temp['Phase'] == 'phase4')]) 
+                )
+            st = time.time()
+            counter = 1
+            for dataset in test_df:
+                print('\n  Training data: '+dataset[0]+' ({}/{})\n'.format(counter,len(test_df)))
+                counter+=1
+                f_results_[dataset[0]] = {model_name: self.cv_auc(dataset[1], model, cv)  for model_name, model in models}
+            end = time.time()
+            print('\n  Done training subject '+str(df['Subject'].iloc[0][4:])+' in '+str(round((end-st)/60,2))+' minutes.\n')
+            self.results_[df['Subject'].iloc[0][4:]] = f_results_
 
         return self
 
@@ -198,7 +192,6 @@ class RSIClassifier():
         self.rsi_to_dataframe(self.resilience_index_)
         
         return self
-    
 # %%
 if __name__ == "__main__":
     print('Importing the data...')
@@ -213,14 +206,14 @@ if __name__ == "__main__":
     rs = 1
     model_list = [  
         ('KNNC',KNeighborsClassifier(5, n_jobs=-1)),
-        ('LRC',LogisticRegression(n_jobs=-1,random_state=rs)),
+        ('LRC',LogisticRegression(n_jobs=-1, max_iter=1000, random_state=rs)),
         ('RFC',RandomForestClassifier(n_jobs=-1,random_state=rs)),
         ('QDA',QuadraticDiscriminantAnalysis()),
         ('GNBC',GaussianNB()),
         ('LDA',LinearDiscriminantAnalysis())
     ]
     subjects = range(0,len(model.df_pc_))
-    cv = StratifiedKFold(n_splits=10, shuffle=False, random_state=rs)
+    cv = StratifiedKFold(n_splits=10, shuffle=False, random_state=None)
     model.get_models_results(subjects, model_list, cv)
     model.calculate_resilience_index(model.results_)
     print('Exporting the data...')
